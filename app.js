@@ -129,6 +129,7 @@
   const btnCloseSettings = document.getElementById('btnCloseSettings');
   const btnSaveSettings = document.getElementById('btnSaveSettings');
   const inputRoom = document.getElementById('inputRoom');
+  const inputCustomFen = document.getElementById('inputCustomFen');
   const modeOnline = document.getElementById('modeOnline');
   const modePassPlay = document.getElementById('modePassPlay');
   const settingsLockedNotice = document.getElementById('settingsLockedNotice');
@@ -806,6 +807,18 @@
 
   btnSaveSettings.addEventListener('click', () => {
     const newRoom = inputRoom.value.trim() || 'dorizz-omdo-tulip';
+    if (inputCustomFen && inputCustomFen.value.trim()) {
+      const fenVal = inputCustomFen.value.trim();
+      const loaded = chess.load(fenVal);
+      if (loaded) {
+        saveLocalState();
+        broadcast({ type: 'sync_response', fen: chess.fen(), pgn: chess.pgn() });
+        showToast('Posisi papan berhasil dipulihkan! 🎯');
+      } else {
+        showToast('Format posisi FEN tidak valid!');
+      }
+      inputCustomFen.value = '';
+    }
     if (newRoom !== roomName) {
       roomName = newRoom;
       if (mqttClient) {
