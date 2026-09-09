@@ -198,6 +198,20 @@
 
   function restoreLocalState() {
     try {
+      const fenParam = urlParams.get('fen');
+      if (fenParam) {
+        try {
+          const decoded = decodeURIComponent(fenParam).replace(/_/g, ' ');
+          if (chess.load(decoded)) {
+            lastMove = null;
+            saveLocalState();
+            return true;
+          }
+        } catch (e) {
+          console.warn('Invalid URL fen param:', e);
+        }
+      }
+
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw);
@@ -267,7 +281,16 @@
         mqttClient.subscribe(mqttTopic, (err) => {
           if (!err) {
             broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide });
-            broadcast({ type: 'sync_request' });
+            if (isGameActive()) {
+              broadcast({
+                type: 'sync_response',
+                fen: chess.fen(),
+                pgn: chess.pgn(),
+                lastMove: lastMove
+              });
+            } else {
+              broadcast({ type: 'sync_request' });
+            }
           }
         });
       });
