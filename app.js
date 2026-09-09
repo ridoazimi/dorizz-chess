@@ -139,6 +139,35 @@
   const gameOverSubtitle = document.getElementById('gameOverSubtitle');
   const btnPlayAgain = document.getElementById('btnPlayAgain');
 
+  // WebRTC Voice Communication Elements
+  const btnVoiceCall = document.getElementById('btnVoiceCall');
+  const voiceLabel = document.getElementById('voiceLabel');
+  const voiceWidget = document.getElementById('voiceWidget');
+  const voiceStatus = document.getElementById('voiceStatus');
+  const btnToggleMic = document.getElementById('btnToggleMic');
+  const btnEndCall = document.getElementById('btnEndCall');
+  const incomingCallModal = document.getElementById('incomingCallModal');
+  const incomingCallAvatar = document.getElementById('incomingCallAvatar');
+  const incomingCallerName = document.getElementById('incomingCallerName');
+  const btnAcceptCall = document.getElementById('btnAcceptCall');
+  const btnRejectCall = document.getElementById('btnRejectCall');
+  const remoteAudio = document.getElementById('remoteAudio');
+
+  // WebRTC State
+  let localStream = null;
+  let peerConnection = null;
+  let isCallActive = false;
+  let isMicMuted = false;
+  let iceCandidatesQueue = [];
+
+  const rtcServers = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+  };
+
   // Anti-Cheat & Lock Verification
   function isGameActive() {
     return chess.history().length > 0 && !chess.game_over();
@@ -277,6 +306,22 @@
       if (!data.isAck) {
         broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide, isAck: true });
       }
+    } else if (data.type === 'rtc_invite') {
+      handleCallInvite(data);
+    } else if (data.type === 'rtc_accept') {
+      handleCallAccepted();
+    } else if (data.type === 'rtc_reject') {
+      showToast((data.senderName || 'Lawan') + ' menolak panggilan suara');
+      resetCallUI();
+    } else if (data.type === 'rtc_offer') {
+      handleRemoteOffer(data);
+    } else if (data.type === 'rtc_answer') {
+      handleRemoteAnswer(data);
+    } else if (data.type === 'rtc_candidate') {
+      handleRemoteCandidate(data);
+    } else if (data.type === 'rtc_end') {
+      showToast('Panggilan suara diakhiri oleh ' + (data.senderName || 'Lawan'));
+      resetCallUI();
     }
   }
 
@@ -701,6 +746,270 @@
     chooseOmDo.classList.add('active');
     chooseTulip.classList.remove('active');
   }
+
+  // WebRTC Voice Call Logic
+  async function getAudioStream() {
+    if (localStream) return localStream;
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      });
+      return localStream;
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      showToast('⚠️ Izin mikrofon ditolak atau tidak tersedia di browser');
+      return null;
+    }
+  }
+
+  function createPeerConnection() {
+    if (peerConnection) {
+      peerConnection.close();
+      peerConnection = null;
+    }
+
+    peerConnection = new RTCPeerConnection(rtcServers);
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
+    }
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        broadcast({
+          type: 'rtc_candidate',
+          candidate: event.candidate
+        });
+      }
+    };
+
+    peerConnection.ontrack = (event) => {
+      if (remoteAudio) {
+        remoteAudio.srcObject = event.streams[0];
+        remoteAudio.play().catch(e => console.warn('Autoplay prevented:', e));
+      }
+      isCallActive = true;
+      voiceWidget.classList.remove('hidden');
+      voiceStatus.innerText = '🟢 Suara Terhubung (' + (mySide === 'w' ? 'Tante Tulip' : 'Om Do') + ')';
+      btnVoiceCall.classList.add('in-call');
+      voiceLabel.innerText = 'Call Aktif';
+      showToast('📞 Suara terhubung! Silakan berbicara');
+      playSound('notify');
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+      if (!peerConnection) return;
+      const state = peerConnection.connectionState;
+      if (state === 'connected') {
+        isCallActive = true;
+        voiceStatus.innerText = '🟢 Suara Terhubung';
+      } else if (state === 'disconnected' || state === 'failed') {
+        voiceStatus.innerText = '⚠️ Koneksi suara terputus';
+      } else if (state === 'closed') {
+        resetCallUI();
+      }
+    };
+
+    return peerConnection;
+  }
+
+  function resetCallUI() {
+    isCallActive = false;
+    isMicMuted = false;
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      localStream = null;
+    }
+    if (peerConnection) {
+      peerConnection.close();
+      peerConnection = null;
+    }
+    iceCandidatesQueue = [];
+
+    if (voiceWidget) voiceWidget.classList.add('hidden');
+    if (incomingCallModal) incomingCallModal.classList.add('hidden');
+    if (btnVoiceCall) {
+      btnVoiceCall.classList.remove('in-call');
+      voiceLabel.innerText = 'Voice Call';
+    }
+    if (btnToggleMic) {
+      btnToggleMic.innerText = '🎙️';
+      btnToggleMic.classList.remove('muted');
+    }
+    if (remoteAudio) {
+      remoteAudio.srcObject = null;
+    }
+  }
+
+  async function startCall() {
+    if (isPassAndPlay) {
+      showToast('Voice call hanya aktif di Mode Online');
+      return;
+    }
+    if (isCallActive) {
+      showToast('Panggilan suara sedang berlangsung');
+      return;
+    }
+
+    const stream = await getAudioStream();
+    if (!stream) return;
+
+    voiceWidget.classList.remove('hidden');
+    voiceStatus.innerText = 'Memanggil lawan...';
+    btnVoiceCall.classList.add('in-call');
+    voiceLabel.innerText = 'Memanggil...';
+
+    broadcast({
+      type: 'rtc_invite',
+      callerName: myName,
+      callerSide: mySide
+    });
+    showToast('📞 Memanggil lawan...');
+  }
+
+  async function handleCallInvite(data) {
+    if (isCallActive) return;
+    if (incomingCallerName) {
+      incomingCallerName.innerText = data.callerName + ' Mengajak Bicara';
+    }
+    if (incomingCallAvatar) {
+      incomingCallAvatar.innerText = (data.callerName && data.callerName.includes('Tulip')) ? '🌷' : '👑';
+    }
+    if (incomingCallModal) {
+      incomingCallModal.classList.remove('hidden');
+    }
+    playSound('notify');
+    triggerHaptic('win');
+  }
+
+  async function acceptCall() {
+    if (incomingCallModal) incomingCallModal.classList.add('hidden');
+    const stream = await getAudioStream();
+    if (!stream) {
+      broadcast({ type: 'rtc_reject' });
+      return;
+    }
+
+    voiceWidget.classList.remove('hidden');
+    voiceStatus.innerText = 'Menghubungkan suara...';
+
+    createPeerConnection();
+    broadcast({ type: 'rtc_accept' });
+  }
+
+  function rejectCall() {
+    if (incomingCallModal) incomingCallModal.classList.add('hidden');
+    broadcast({ type: 'rtc_reject' });
+    showToast('Panggilan ditolak');
+  }
+
+  async function handleCallAccepted() {
+    voiceStatus.innerText = 'Menegosiasikan koneksi...';
+    const pc = createPeerConnection();
+
+    try {
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: false
+      });
+      await pc.setLocalDescription(offer);
+
+      broadcast({
+        type: 'rtc_offer',
+        sdp: offer
+      });
+    } catch (err) {
+      console.error('Error creating WebRTC offer:', err);
+      resetCallUI();
+    }
+  }
+
+  async function handleRemoteOffer(data) {
+    if (!peerConnection) {
+      createPeerConnection();
+    }
+
+    try {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+      while (iceCandidatesQueue.length > 0) {
+        const cand = iceCandidatesQueue.shift();
+        await peerConnection.addIceCandidate(cand);
+      }
+
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      broadcast({
+        type: 'rtc_answer',
+        sdp: answer
+      });
+    } catch (err) {
+      console.error('Error handling remote offer:', err);
+    }
+  }
+
+  async function handleRemoteAnswer(data) {
+    if (!peerConnection) return;
+    try {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+      while (iceCandidatesQueue.length > 0) {
+        const cand = iceCandidatesQueue.shift();
+        await peerConnection.addIceCandidate(cand);
+      }
+    } catch (err) {
+      console.error('Error handling remote answer:', err);
+    }
+  }
+
+  async function handleRemoteCandidate(data) {
+    if (!data.candidate) return;
+    try {
+      const rtcCandidate = new RTCIceCandidate(data.candidate);
+      if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+        await peerConnection.addIceCandidate(rtcCandidate);
+      } else {
+        iceCandidatesQueue.push(rtcCandidate);
+      }
+    } catch (err) {
+      console.error('Error adding ICE candidate:', err);
+    }
+  }
+
+  function endCall(notifyRemote = true) {
+    if (notifyRemote) {
+      broadcast({ type: 'rtc_end' });
+    }
+    resetCallUI();
+    showToast('Panggilan suara diakhiri');
+  }
+
+  function toggleMic() {
+    if (!localStream) return;
+    isMicMuted = !isMicMuted;
+    localStream.getAudioTracks().forEach(track => {
+      track.enabled = !isMicMuted;
+    });
+
+    btnToggleMic.innerText = isMicMuted ? '🔇' : '🎙️';
+    btnToggleMic.classList.toggle('muted', isMicMuted);
+    showToast(isMicMuted ? 'Mikrofon di-mute' : 'Mikrofon aktif');
+  }
+
+  // Voice Call Button Listeners
+  if (btnVoiceCall) btnVoiceCall.addEventListener('click', startCall);
+  if (btnAcceptCall) btnAcceptCall.addEventListener('click', acceptCall);
+  if (btnRejectCall) btnRejectCall.addEventListener('click', rejectCall);
+  if (btnEndCall) btnEndCall.addEventListener('click', () => endCall(true));
+  if (btnToggleMic) btnToggleMic.addEventListener('click', toggleMic);
 
   // Initialization
   renderBoard();

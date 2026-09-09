@@ -689,3 +689,178 @@ body {
 .btn-icon.btn-danger .label {
   color: #f87171;
 }
+
+
+/* Header Right Layout */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Voice Call Button */
+.btn-voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  color: #4ade80;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-voice:hover {
+  background: rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+}
+
+.btn-voice.in-call {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  animation: pulse-border 2s infinite;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* Voice Widget Bar */
+.voice-widget {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: 12px;
+  padding: 8px 14px;
+  margin: 0 12px 10px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+.voice-widget.hidden {
+  display: none !important;
+}
+
+.voice-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px #22c55e;
+  animation: pulse-green 1.5s infinite;
+}
+
+@keyframes pulse-green {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.voice-status {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.voice-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-voice-ctrl {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #fff;
+}
+
+.btn-voice-ctrl.btn-danger {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.btn-voice-ctrl.muted {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+}
+
+/* Call Modal Box */
+.call-box {
+  text-align: center;
+  padding: 24px 20px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.25);
+}
+
+.call-avatar {
+  font-size: 44px;
+  margin-bottom: 8px;
+  animation: bounce 1.2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.call-subtext {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 8px 0 20px;
+  line-height: 1.5;
+}
+
+.call-modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn-call {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-call-accept {
+  background: #22c55e;
+  color: #052e16;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+}
+
+.btn-call-accept:hover {
+  background: #16a34a;
+}
+
+.btn-call-reject {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
