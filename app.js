@@ -8,7 +8,7 @@
     tg.expand();
   }
 
-  // --- Audio Synthesizer (Zero External Assets) ---
+  // Audio Synthesizer (Web Audio API)
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   function playSound(type) {
     if (audioCtx.state === 'suspended') {
@@ -65,7 +65,7 @@
     } catch(e) {}
   }
 
-  // --- Game State ---
+  // Game Engine & State
   const chess = new Chess();
   let mySide = 'w'; // 'w', 'b', or 's' (spectator)
   let isFlipped = false;
@@ -133,12 +133,57 @@
   const pickWhite = document.getElementById('pickWhite');
   const pickBlack = document.getElementById('pickBlack');
   const pickSpectator = document.getElementById('pickSpectator');
+  const settingsLockedNotice = document.getElementById('settingsLockedNotice');
   const gameOverModal = document.getElementById('gameOverModal');
   const gameOverTitle = document.getElementById('gameOverTitle');
   const gameOverSubtitle = document.getElementById('gameOverSubtitle');
   const btnPlayAgain = document.getElementById('btnPlayAgain');
 
-  // --- MQTT Client Setup ---
+  // Anti-Cheat & Lock Helpers
+  function isGameActive() {
+    return chess.history().length > 0 && !chess.game_over();
+  }
+
+  function updateRoleLockState() {
+    const active = isGameActive();
+    const roleIcon = btnRole.querySelector('.icon');
+    const roleText = document.getElementById('roleLabel');
+
+    if (active) {
+      btnRole.classList.add('locked');
+      if (roleIcon) roleIcon.innerText = '🔒';
+      if (roleText) roleText.innerText = 'Terkunci';
+      btnRole.setAttribute('title', 'Sisi terkunci selama duel berjalan');
+    } else {
+      btnRole.classList.remove('locked');
+      if (roleIcon) roleIcon.innerText = '🎭';
+      if (roleText) roleText.innerText = 'Sisi';
+      btnRole.setAttribute('title', 'Ganti Sisi');
+    }
+
+    const sideBtns = [pickWhite, pickBlack, pickSpectator];
+    const modeBtns = [modeOnline, modePassPlay];
+
+    sideBtns.forEach(btn => {
+      if (btn) {
+        btn.disabled = active;
+        btn.classList.toggle('disabled-btn', active);
+      }
+    });
+
+    modeBtns.forEach(btn => {
+      if (btn) {
+        btn.disabled = active;
+        btn.classList.toggle('disabled-btn', active);
+      }
+    });
+
+    if (settingsLockedNotice) {
+      settingsLockedNotice.classList.toggle('hidden', !active);
+    }
+  }
+
+  // MQTT Client Setup
   let mqttClient = null;
   const mqttBroker = 'wss://broker.emqx.io:8084/mqtt';
   const mqttTopic = 'dorizz/chess/v1/' + roomName;
@@ -155,7 +200,7 @@
 
     try {
       mqttClient = mqtt.connect(mqttBroker, {
-        clientId: 'dorizz_' + myId + '_' + Math.random().toString(16).substr(2, 5),
+        clientId: 'dorizz_' + myId + '_' + Math.random().toString(16).substring(2, 7),
         keepalive: 30,
         reconnectPeriod: 2000
       });
@@ -201,6 +246,14 @@
 
   function handleRemoteMessage(data) {
     if (data.type === 'move') {
+      if (chess.game_over()) return;
+
+      // Reject remote move if side does not match active turn
+      if (data.side && data.side !== chess.turn()) {
+        console.warn('Move rejected: side does not match active turn');
+        return;
+      }
+
       const res = chess.move(data.move);
       if (res) {
         lastMove = { from: res.from, to: res.to };
@@ -209,6 +262,7 @@
         triggerHaptic(isCapture ? 'capture' : 'move');
         renderBoard();
         checkGameStatus();
+        updateRoleLockState();
       }
     } else if (data.type === 'taunt') {
       showToast(data.msg);
@@ -221,18 +275,24 @@
       legalMoves = [];
       gameOverModal.classList.add('hidden');
       renderBoard();
-      showToast(data.senderName + ' memulai permainan baru!');
+      updateRoleLockState();
+      const msg = data.surrendered
+        ? (data.senderName + ' menyerah! Papan catur direset.')
+        : (data.senderName + ' memulai permainan baru!');
+      showToast(msg);
       playSound('notify');
     } else if (data.type === 'presence') {
-      // Update opponent label if not spectator
       if (data.side !== mySide) {
         topName.innerText = data.name;
         topAvatar.innerText = data.name.includes('Tulip') ? '🌷' : (data.name.includes('Do') ? '👑' : '♟️');
       }
+      if (!data.isAck) {
+        broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide, isAck: true });
+      }
     }
   }
 
-  // --- UI Toast ---
+  // UI Toast
   let toastTimer = null;
   function showToast(msg) {
     quickToast.innerText = msg;
@@ -243,7 +303,7 @@
     }, 2400);
   }
 
-  // --- Board Rendering ---
+  // Board Rendering
   const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
 
@@ -253,10 +313,9 @@
     const currentFiles = isFlipped ? [...files].reverse() : files;
     const currentRanks = isFlipped ? [...ranks].reverse() : ranks;
 
-    const turn = chess.turn(); // 'w' or 'b'
+    const turn = chess.turn();
     const inCheck = chess.in_check();
 
-    // Find King in check square
     let checkSquare = null;
     if (inCheck) {
       for (let r = 0; r < 8; r++) {
@@ -278,13 +337,11 @@
         squareEl.className = 'square';
         squareEl.dataset.square = squareId;
 
-        // Color shading
         const fileNum = files.indexOf(file);
         const rankNum = parseInt(rank) - 1;
         const isLight = (fileNum + rankNum) % 2 !== 0;
         squareEl.classList.add(isLight ? 'light' : 'dark');
 
-        // Highlights
         if (selectedSquare === squareId) {
           squareEl.classList.add('selected');
         }
@@ -295,7 +352,6 @@
           squareEl.classList.add('check');
         }
 
-        // Piece
         const piece = chess.get(squareId);
         if (piece) {
           const pieceKey = piece.color + piece.type.toUpperCase();
@@ -305,7 +361,6 @@
           squareEl.appendChild(pieceEl);
         }
 
-        // Move hint
         const legalMove = legalMoves.find(m => m.to === squareId);
         if (legalMove) {
           const hintEl = document.createElement('div');
@@ -313,21 +368,19 @@
           squareEl.appendChild(hintEl);
         }
 
-        // Coordinates
-        if (fIdx === (isFlipped ? 7 : 7)) {
+        if (fIdx === 7) {
           const rankLabel = document.createElement('span');
           rankLabel.className = 'coord rank';
           rankLabel.innerText = rank;
           squareEl.appendChild(rankLabel);
         }
-        if (rIdx === (isFlipped ? 7 : 7)) {
+        if (rIdx === 7) {
           const fileLabel = document.createElement('span');
           fileLabel.className = 'coord file';
           fileLabel.innerText = file;
           squareEl.appendChild(fileLabel);
         }
 
-        // Click handler
         squareEl.addEventListener('click', () => handleSquareClick(squareId));
         boardEl.appendChild(squareEl);
       });
@@ -339,22 +392,25 @@
   function handleSquareClick(squareId) {
     if (chess.game_over()) return;
 
+    if (mySide === 's') {
+      showToast('Mode penonton: kamu hanya memantau duel.');
+      return;
+    }
+
     const currentTurn = chess.turn();
 
-    // Check turn in online mode
-    if (!isPassAndPlay && mySide !== 's' && mySide !== currentTurn) {
+    if (!isPassAndPlay && mySide !== currentTurn) {
       showToast('Sekarang giliran lawan!');
       return;
     }
 
     if (selectedSquare) {
-      // Try to execute move
       const move = legalMoves.find(m => m.to === squareId);
       if (move) {
         const moveData = {
           from: selectedSquare,
           to: squareId,
-          promotion: 'q' // Auto queen for snappy mobile play
+          promotion: 'q'
         };
         const executed = chess.move(moveData);
         if (executed) {
@@ -363,29 +419,27 @@
           playSound(isCapture ? 'capture' : 'move');
           triggerHaptic(isCapture ? 'capture' : 'move');
 
-          broadcast({ type: 'move', move: moveData, fen: chess.fen() });
+          broadcast({ type: 'move', move: moveData, side: mySide, fen: chess.fen() });
 
           selectedSquare = null;
           legalMoves = [];
           renderBoard();
           checkGameStatus();
+          updateRoleLockState();
           return;
         }
       }
 
-      // If clicked another own piece, select that instead
       const clickedPiece = chess.get(squareId);
       if (clickedPiece && (isPassAndPlay || clickedPiece.color === currentTurn)) {
         selectSquare(squareId);
         return;
       }
 
-      // Deselect
       selectedSquare = null;
       legalMoves = [];
       renderBoard();
     } else {
-      // Initial selection
       const piece = chess.get(squareId);
       if (!piece) return;
       if (!isPassAndPlay && piece.color !== mySide) {
@@ -406,13 +460,15 @@
 
   function updatePlayerCards() {
     const turn = chess.turn();
-    const isMyTurn = (turn === mySide);
+    const active = isGameActive();
 
     const bottomSide = isFlipped ? 'b' : 'w';
     const topSide = isFlipped ? 'w' : 'b';
 
-    bottomSideBadge.innerText = bottomSide === 'w' ? '⚪ Putih' : '⚫ Hitam';
-    topSideBadge.innerText = topSide === 'w' ? '⚪ Putih' : '⚫ Hitam';
+    const lockBadge = active ? ' 🔒' : '';
+
+    bottomSideBadge.innerText = (bottomSide === 'w' ? '⚪ Putih' : '⚫ Hitam') + lockBadge;
+    topSideBadge.innerText = (topSide === 'w' ? '⚪ Putih' : '⚫ Hitam') + lockBadge;
 
     if (bottomSide === mySide) {
       bottomName.innerText = myName;
@@ -439,7 +495,6 @@
       bottomTurnIndicator.innerText = 'Menunggu Lawan';
     }
 
-    // Tally captured pieces
     updateCapturedPieces();
   }
 
@@ -476,7 +531,6 @@
   function checkGameStatus() {
     if (chess.in_checkmate()) {
       const winnerColor = chess.turn() === 'w' ? 'Hitam' : 'Putih';
-      const isWinner = (chess.turn() !== mySide);
       playSound('check');
       triggerHaptic('win');
 
@@ -499,17 +553,32 @@
     }
   }
 
-  // --- Event Listeners ---
+  // Event Listeners
   btnFlip.addEventListener('click', () => {
     isFlipped = !isFlipped;
     renderBoard();
   });
 
   btnRole.addEventListener('click', () => {
-    if (mySide === 'w') mySide = 'b';
-    else if (mySide === 'b') mySide = 'w';
-    isFlipped = (mySide === 'b');
+    if (isGameActive()) {
+      showToast('🔒 Sisi terkunci saat duel berlangsung!');
+      triggerHaptic('check');
+      return;
+    }
+
+    if (mySide === 'w') {
+      mySide = 'b';
+      isFlipped = true;
+    } else if (mySide === 'b') {
+      mySide = 'w';
+      isFlipped = false;
+    } else {
+      mySide = 'w';
+      isFlipped = false;
+    }
     renderBoard();
+    updateRoleLockState();
+    broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide });
     showToast('Kamu sekarang sisi ' + (mySide === 'w' ? 'Putih' : 'Hitam'));
   });
 
@@ -532,15 +601,21 @@
   });
 
   btnNewGame.addEventListener('click', () => {
-    if (confirm('Mulai ulang duel catur dari awal?')) {
+    const isOngoing = isGameActive();
+    const promptText = isOngoing
+      ? 'Duel sedang berlangsung! Jika mulai ulang sekarang, kamu dianggap MENYERAH. Lanjutkan?'
+      : 'Mulai ulang duel catur dari awal?';
+
+    if (confirm(promptText)) {
       chess.reset();
       lastMove = null;
       selectedSquare = null;
       legalMoves = [];
       gameOverModal.classList.add('hidden');
       renderBoard();
-      broadcast({ type: 'new_game' });
-      showToast('Papan catur direset!');
+      updateRoleLockState();
+      broadcast({ type: 'new_game', surrendered: isOngoing });
+      showToast(isOngoing ? 'Kamu menyerah dan mereset duel' : 'Papan catur direset');
       playSound('notify');
     }
   });
@@ -552,11 +627,13 @@
     legalMoves = [];
     gameOverModal.classList.add('hidden');
     renderBoard();
-    broadcast({ type: 'new_game' });
+    updateRoleLockState();
+    broadcast({ type: 'new_game', surrendered: false });
   });
 
   btnSettings.addEventListener('click', () => {
     inputRoom.value = roomName;
+    updateRoleLockState();
     settingsModal.classList.remove('hidden');
   });
 
@@ -565,18 +642,30 @@
   });
 
   modeOnline.addEventListener('click', () => {
+    if (isGameActive()) {
+      showToast('🔒 Mode terkunci saat duel aktif!');
+      return;
+    }
     isPassAndPlay = false;
     modeOnline.classList.add('active');
     modePassPlay.classList.remove('active');
   });
 
   modePassPlay.addEventListener('click', () => {
+    if (isGameActive()) {
+      showToast('🔒 Mode terkunci saat duel aktif!');
+      return;
+    }
     isPassAndPlay = true;
     modePassPlay.classList.add('active');
     modeOnline.classList.remove('active');
   });
 
   pickWhite.addEventListener('click', () => {
+    if (isGameActive()) {
+      showToast('🔒 Sisi terkunci saat duel berlangsung!');
+      return;
+    }
     mySide = 'w';
     isFlipped = false;
     pickWhite.classList.add('active');
@@ -585,6 +674,10 @@
   });
 
   pickBlack.addEventListener('click', () => {
+    if (isGameActive()) {
+      showToast('🔒 Sisi terkunci saat duel berlangsung!');
+      return;
+    }
     mySide = 'b';
     isFlipped = true;
     pickBlack.classList.add('active');
@@ -593,6 +686,10 @@
   });
 
   pickSpectator.addEventListener('click', () => {
+    if (isGameActive()) {
+      showToast('🔒 Tidak bisa beralih penonton saat duel aktif!');
+      return;
+    }
     mySide = 's';
     pickSpectator.classList.add('active');
     pickWhite.classList.remove('active');
@@ -610,10 +707,12 @@
     }
     settingsModal.classList.add('hidden');
     renderBoard();
+    updateRoleLockState();
   });
 
-  // Start everything!
+  // Initialization
   renderBoard();
+  updateRoleLockState();
   initMQTT();
 
 })();
