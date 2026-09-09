@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Dorizz Chess Duel ♟️</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="chess.min.js"></script>
   <script src="mqtt.min.js"></script>
-  <script src="pieces.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <script src="pieces.js?v=2.3"></script>
+  <link rel="stylesheet" href="style.css?v=2.3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -18,7 +21,7 @@
     <!-- Top Header: Title & Room Info -->
     <header class="game-header">
       <div class="brand">
-        <span class="badge-tag">DUEL REALTIME</span>
+        <span class="badge-tag">DUEL REALTIME v2.3</span>
         <h1>Dorizz Chess ♟️</h1>
       </div>
       <div class="room-pill" id="roomPill">
@@ -26,6 +29,15 @@
         <span id="roomLabel">Room: Default</span>
       </div>
     </header>
+
+    <!-- Role Selection Bar (Active before match starts) -->
+    <div class="identity-bar" id="identityBar">
+      <span class="identity-title">Pilih Peran Kamu (Kunci Otomatis Saat Mulai):</span>
+      <div class="identity-buttons">
+        <button class="btn-identity active" id="chooseOmDo">👑 Om Do (Putih ⚪)</button>
+        <button class="btn-identity" id="chooseTulip">🌷 Tante Tulip (Hitam ⚫)</button>
+      </div>
+    </div>
 
     <!-- Opponent Profile Box -->
     <section class="player-card" id="topPlayerCard">
@@ -67,23 +79,23 @@
 
     <!-- Control Actions & Reactions -->
     <footer class="action-bar">
-      <button class="btn btn-icon" id="btnFlip" title="Putar Papan">
+      <button class="btn btn-icon" id="btnFlip" title="Putar Sudut Pandang Papan">
         <span class="icon">🔄</span>
         <span class="label">Putar</span>
-      </button>
-      <button class="btn btn-icon" id="btnRole" title="Ganti Sisi">
-        <span class="icon">🎭</span>
-        <span class="label" id="roleLabel">Sisi</span>
       </button>
       <button class="btn btn-icon" id="btnEmoteToggle" title="Chat Singkat">
         <span class="icon">💬</span>
         <span class="label">Taunt</span>
       </button>
+      <button class="btn btn-icon btn-danger" id="btnResign" title="Menyerah">
+        <span class="icon">🏳️</span>
+        <span class="label">Nyerah</span>
+      </button>
       <button class="btn btn-icon" id="btnNewGame" title="Main Ulang">
         <span class="icon">✨</span>
         <span class="label">Ulang</span>
       </button>
-      <button class="btn btn-icon" id="btnSettings" title="Pengaturan">
+      <button class="btn btn-icon" id="btnSettings" title="Pengaturan Room">
         <span class="icon">⚙️</span>
         <span class="label">Room</span>
       </button>
@@ -119,25 +131,18 @@
           <input type="text" id="inputRoom" placeholder="dorizz-omdo-tulip">
           <p class="hint">Pastikan Om Do dan Tante Tulip pakai nama room yang sama persis.</p>
           
-          <label style="margin-top:12px;">Mode:</label>
+          <label style="margin-top:12px;">Mode Pertandingan:</label>
           <div class="mode-toggle">
             <button class="btn-toggle active" id="modeOnline">Realtime Online</button>
             <button class="btn-toggle" id="modePassPlay">Pass & Play (1 HP)</button>
           </div>
 
-          <label style="margin-top:12px;">Pilih Sisi Kamu:</label>
           <div id="settingsLockedNotice" class="settings-locked-notice hidden">
-            🔒 Duel sedang aktif. Pemilihan sisi dan mode dikunci hingga pertandingan selesai.
-          </div>
-
-          <div class="side-selector">
-            <button class="btn-side active" id="pickWhite">⚪ Putih (Jalan Duluan)</button>
-            <button class="btn-side" id="pickBlack">⚫ Hitam (Kedua)</button>
-            <button class="btn-side" id="pickSpectator">👁️ Penonton</button>
+            🔒 Duel sedang aktif. Sisi dan mode dikunci hingga duel selesai.
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" id="btnSaveSettings">Simpan & Mulai</button>
+          <button class="btn btn-primary" id="btnSaveSettings">Simpan Pengaturan</button>
         </div>
       </div>
     </div>
@@ -145,7 +150,7 @@
     <!-- Game Over Banner Overlay -->
     <div id="gameOverModal" class="modal hidden">
       <div class="modal-content text-center">
-        <div class="trophy-icon">🏆</div>
+        <div class="trophy-icon" id="gameOverIcon">🏆</div>
         <h2 id="gameOverTitle">SKAKMAT!</h2>
         <p id="gameOverSubtitle">Om Do Memenangkan Pertandingan!</p>
         <div class="modal-footer justify-center" style="margin-top:16px;">
@@ -156,6 +161,6 @@
 
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.3"></script>
 </body>
 </html>

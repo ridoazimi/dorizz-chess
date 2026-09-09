@@ -38,8 +38,8 @@
       osc.stop(now + 0.12);
     } else if (type === 'check') {
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(587.33, now); // D5
-      osc.frequency.setValueAtTime(880, now + 0.1); // A5
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.setValueAtTime(880, now + 0.1);
       gain.gain.setValueAtTime(0.25, now);
       gain.gain.linearRampToValueAtTime(0.01, now + 0.28);
       osc.start(now);
@@ -67,40 +67,41 @@
 
   // Game Engine & State
   const chess = new Chess();
-  let mySide = 'w'; // 'w', 'b', or 's' (spectator)
+  let mySide = 'w'; // 'w' = White, 'b' = Black
   let isFlipped = false;
   let selectedSquare = null;
   let legalMoves = [];
   let lastMove = null;
   let isPassAndPlay = false;
 
-  // Identity
+  // Identity Resolution
   const tgUser = tg?.initDataUnsafe?.user;
   let myId = tgUser ? String(tgUser.id) : ('guest_' + Math.random().toString(36).substring(2, 7));
-  let myName = tgUser ? (tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '')) : 'Pemain';
+  let myName = 'Om Do 👑';
 
-  // Customize default names for Om Do & Tante Tulip
-  if (myId === '8247396122' || myName.toLowerCase().includes('rido')) {
-    myName = 'Om Do 👑';
-    mySide = 'w';
-  } else if (myName.toLowerCase().includes('ajeng') || tgUser?.username?.toLowerCase() === 'puspetpus') {
+  // Read URL query parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramPlayer = (urlParams.get('p') || urlParams.get('user') || '').toLowerCase();
+  let roomName = urlParams.get('room') || 'dorizz-omdo-tulip';
+
+  if (paramPlayer === 'tulip' || paramPlayer === 'ajeng' || tgUser?.username?.toLowerCase() === 'puspetpus') {
     myName = 'Tante Tulip 🌷';
     mySide = 'b';
     isFlipped = true;
-  }
-
-  // Room config from URL param or default
-  const urlParams = new URLSearchParams(window.location.search);
-  let roomName = urlParams.get('room') || 'dorizz-omdo-tulip';
-  if (urlParams.get('side')) {
-    mySide = urlParams.get('side');
-    isFlipped = (mySide === 'b');
+  } else {
+    myName = 'Om Do 👑';
+    mySide = 'w';
+    isFlipped = false;
   }
 
   // DOM Elements
   const boardEl = document.getElementById('board');
   const connDot = document.getElementById('connDot');
   const roomLabel = document.getElementById('roomLabel');
+  const identityBar = document.getElementById('identityBar');
+  const chooseOmDo = document.getElementById('chooseOmDo');
+  const chooseTulip = document.getElementById('chooseTulip');
+
   const topName = document.getElementById('topName');
   const topAvatar = document.getElementById('topAvatar');
   const topSideBadge = document.getElementById('topSideBadge');
@@ -118,8 +119,8 @@
   const quickToast = document.getElementById('quickToast');
 
   const btnFlip = document.getElementById('btnFlip');
-  const btnRole = document.getElementById('btnRole');
   const btnEmoteToggle = document.getElementById('btnEmoteToggle');
+  const btnResign = document.getElementById('btnResign');
   const btnNewGame = document.getElementById('btnNewGame');
   const btnSettings = document.getElementById('btnSettings');
   const emoteDrawer = document.getElementById('emoteDrawer');
@@ -130,60 +131,41 @@
   const inputRoom = document.getElementById('inputRoom');
   const modeOnline = document.getElementById('modeOnline');
   const modePassPlay = document.getElementById('modePassPlay');
-  const pickWhite = document.getElementById('pickWhite');
-  const pickBlack = document.getElementById('pickBlack');
-  const pickSpectator = document.getElementById('pickSpectator');
   const settingsLockedNotice = document.getElementById('settingsLockedNotice');
+
   const gameOverModal = document.getElementById('gameOverModal');
+  const gameOverIcon = document.getElementById('gameOverIcon');
   const gameOverTitle = document.getElementById('gameOverTitle');
   const gameOverSubtitle = document.getElementById('gameOverSubtitle');
   const btnPlayAgain = document.getElementById('btnPlayAgain');
 
-  // Anti-Cheat & Lock Helpers
+  // Anti-Cheat & Lock Verification
   function isGameActive() {
     return chess.history().length > 0 && !chess.game_over();
   }
 
-  function updateRoleLockState() {
+  function updateLockState() {
     const active = isGameActive();
-    const roleIcon = btnRole.querySelector('.icon');
-    const roleText = document.getElementById('roleLabel');
 
-    if (active) {
-      btnRole.classList.add('locked');
-      if (roleIcon) roleIcon.innerText = '🔒';
-      if (roleText) roleText.innerText = 'Terkunci';
-      btnRole.setAttribute('title', 'Sisi terkunci selama duel berjalan');
-    } else {
-      btnRole.classList.remove('locked');
-      if (roleIcon) roleIcon.innerText = '🎭';
-      if (roleText) roleText.innerText = 'Sisi';
-      btnRole.setAttribute('title', 'Ganti Sisi');
+    // When duel is active, completely hide role picker bar to prevent changing side
+    if (identityBar) {
+      identityBar.classList.toggle('hidden', active);
     }
 
-    const sideBtns = [pickWhite, pickBlack, pickSpectator];
-    const modeBtns = [modeOnline, modePassPlay];
-
-    sideBtns.forEach(btn => {
-      if (btn) {
-        btn.disabled = active;
-        btn.classList.toggle('disabled-btn', active);
-      }
-    });
-
-    modeBtns.forEach(btn => {
-      if (btn) {
-        btn.disabled = active;
-        btn.classList.toggle('disabled-btn', active);
-      }
-    });
+    // Lock mode selection in settings modal
+    if (modeOnline && modePassPlay) {
+      modeOnline.disabled = active;
+      modePassPlay.disabled = active;
+      modeOnline.classList.toggle('disabled-btn', active);
+      modePassPlay.classList.toggle('disabled-btn', active);
+    }
 
     if (settingsLockedNotice) {
       settingsLockedNotice.classList.toggle('hidden', !active);
     }
   }
 
-  // MQTT Client Setup
+  // MQTT Connection
   let mqttClient = null;
   const mqttBroker = 'wss://broker.emqx.io:8084/mqtt';
   const mqttTopic = 'dorizz/chess/v1/' + roomName;
@@ -217,7 +199,7 @@
       mqttClient.on('message', (topic, payload) => {
         try {
           const data = JSON.parse(payload.toString());
-          if (data.senderId === myId) return; // ignore self
+          if (data.senderId === myId) return;
           handleRemoteMessage(data);
         } catch (e) {
           console.error(e);
@@ -262,8 +244,17 @@
         triggerHaptic(isCapture ? 'capture' : 'move');
         renderBoard();
         checkGameStatus();
-        updateRoleLockState();
+        updateLockState();
       }
+    } else if (data.type === 'resign') {
+      const winnerName = (data.loserSide === 'w') ? 'Tante Tulip 🌷' : 'Om Do 👑';
+      gameOverIcon.innerText = '🏆';
+      gameOverTitle.innerText = data.loserName + ' Menyerah! 🏳️';
+      gameOverSubtitle.innerText = winnerName + ' Memenangkan Duel Ini!';
+      gameOverModal.classList.remove('hidden');
+      playSound('notify');
+      triggerHaptic('win');
+      updateLockState();
     } else if (data.type === 'taunt') {
       showToast(data.msg);
       playSound('notify');
@@ -275,16 +266,13 @@
       legalMoves = [];
       gameOverModal.classList.add('hidden');
       renderBoard();
-      updateRoleLockState();
-      const msg = data.surrendered
-        ? (data.senderName + ' menyerah! Papan catur direset.')
-        : (data.senderName + ' memulai permainan baru!');
-      showToast(msg);
+      updateLockState();
+      showToast(data.senderName + ' memulai permainan baru!');
       playSound('notify');
     } else if (data.type === 'presence') {
       if (data.side !== mySide) {
         topName.innerText = data.name;
-        topAvatar.innerText = data.name.includes('Tulip') ? '🌷' : (data.name.includes('Do') ? '👑' : '♟️');
+        topAvatar.innerText = data.name.includes('Tulip') ? '🌷' : '👑';
       }
       if (!data.isAck) {
         broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide, isAck: true });
@@ -292,7 +280,7 @@
     }
   }
 
-  // UI Toast
+  // Toast Notification
   let toastTimer = null;
   function showToast(msg) {
     quickToast.innerText = msg;
@@ -392,15 +380,11 @@
   function handleSquareClick(squareId) {
     if (chess.game_over()) return;
 
-    if (mySide === 's') {
-      showToast('Mode penonton: kamu hanya memantau duel.');
-      return;
-    }
-
     const currentTurn = chess.turn();
 
+    // Strict Anti-Cheat: Reject click if not player's turn or trying to move opponent piece
     if (!isPassAndPlay && mySide !== currentTurn) {
-      showToast('Sekarang giliran lawan!');
+      showToast('Bukan giliranmu! Menunggu giliran lawan.');
       return;
     }
 
@@ -425,7 +409,7 @@
           legalMoves = [];
           renderBoard();
           checkGameStatus();
-          updateRoleLockState();
+          updateLockState();
           return;
         }
       }
@@ -443,9 +427,11 @@
       const piece = chess.get(squareId);
       if (!piece) return;
       if (!isPassAndPlay && piece.color !== mySide) {
+        showToast('Itu bidak lawan! Bidakmu ' + (mySide === 'w' ? 'Putih ⚪' : 'Hitam ⚫'));
         return;
       }
       if (piece.color !== currentTurn) {
+        showToast('Sekarang giliran lawan!');
         return;
       }
       selectSquare(squareId);
@@ -472,15 +458,18 @@
 
     if (bottomSide === mySide) {
       bottomName.innerText = myName;
-      bottomAvatar.innerText = myName.includes('Tulip') ? '🌷' : (myName.includes('Do') ? '👑' : '😎');
+      bottomAvatar.innerText = myName.includes('Tulip') ? '🌷' : '👑';
     } else {
-      bottomName.innerText = 'Lawan';
-      bottomAvatar.innerText = '♟️';
+      bottomName.innerText = myName.includes('Tulip') ? 'Om Do 👑' : 'Tante Tulip 🌷';
+      bottomAvatar.innerText = myName.includes('Tulip') ? '👑' : '🌷';
     }
 
     if (topSide === mySide) {
       topName.innerText = myName;
-      topAvatar.innerText = myName.includes('Tulip') ? '🌷' : (myName.includes('Do') ? '👑' : '😎');
+      topAvatar.innerText = myName.includes('Tulip') ? '🌷' : '👑';
+    } else {
+      topName.innerText = myName.includes('Tulip') ? 'Om Do 👑' : 'Tante Tulip 🌷';
+      topAvatar.innerText = myName.includes('Tulip') ? '👑' : '🌷';
     }
 
     if (turn === bottomSide) {
@@ -531,11 +520,13 @@
   function checkGameStatus() {
     if (chess.in_checkmate()) {
       const winnerColor = chess.turn() === 'w' ? 'Hitam' : 'Putih';
+      const winnerName = (winnerColor === 'Putih') ? 'Om Do 👑' : 'Tante Tulip 🌷';
       playSound('check');
       triggerHaptic('win');
 
+      gameOverIcon.innerText = '🏆';
       gameOverTitle.innerText = 'SKAKMAT! 🏆';
-      gameOverSubtitle.innerText = winnerColor + ' Keluar Sebagai Juara!';
+      gameOverSubtitle.innerText = winnerName + ' Keluar Sebagai Juara!';
       gameOverModal.classList.remove('hidden');
     } else if (chess.in_draw()) {
       let reason = 'Remis (Draw)';
@@ -543,6 +534,7 @@
       else if (chess.in_threefold_repetition()) reason = 'Remis 3x Posisi Berulang!';
       else if (chess.insufficient_material()) reason = 'Remis Kurang Perwira!';
 
+      gameOverIcon.innerText = '🤝';
       gameOverTitle.innerText = 'REMIS! 🤝';
       gameOverSubtitle.innerText = reason;
       gameOverModal.classList.remove('hidden');
@@ -559,27 +551,37 @@
     renderBoard();
   });
 
-  btnRole.addEventListener('click', () => {
+  // Identity Switcher (Only allowed before match starts)
+  chooseOmDo.addEventListener('click', () => {
     if (isGameActive()) {
-      showToast('🔒 Sisi terkunci saat duel berlangsung!');
-      triggerHaptic('check');
+      showToast('🔒 Pertandingan aktif! Peran sudah dikunci.');
       return;
     }
-
-    if (mySide === 'w') {
-      mySide = 'b';
-      isFlipped = true;
-    } else if (mySide === 'b') {
-      mySide = 'w';
-      isFlipped = false;
-    } else {
-      mySide = 'w';
-      isFlipped = false;
-    }
+    myName = 'Om Do 👑';
+    mySide = 'w';
+    isFlipped = false;
+    chooseOmDo.classList.add('active');
+    chooseTulip.classList.remove('active');
     renderBoard();
-    updateRoleLockState();
+    updateLockState();
     broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide });
-    showToast('Kamu sekarang sisi ' + (mySide === 'w' ? 'Putih' : 'Hitam'));
+    showToast('Masuk sebagai Om Do (Putih ⚪)');
+  });
+
+  chooseTulip.addEventListener('click', () => {
+    if (isGameActive()) {
+      showToast('🔒 Pertandingan aktif! Peran sudah dikunci.');
+      return;
+    }
+    myName = 'Tante Tulip 🌷';
+    mySide = 'b';
+    isFlipped = true;
+    chooseTulip.classList.add('active');
+    chooseOmDo.classList.remove('active');
+    renderBoard();
+    updateLockState();
+    broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide });
+    showToast('Masuk sebagai Tante Tulip (Hitam ⚫)');
   });
 
   btnEmoteToggle.addEventListener('click', () => {
@@ -600,11 +602,27 @@
     });
   });
 
+  btnResign.addEventListener('click', () => {
+    if (!isGameActive()) {
+      showToast('Pertandingan belum dimulai.');
+      return;
+    }
+    if (confirm('Apakah kamu yakin ingin MENYERAH pada duel ini?')) {
+      const winnerName = (mySide === 'w') ? 'Tante Tulip 🌷' : 'Om Do 👑';
+      broadcast({ type: 'resign', loserSide: mySide, loserName: myName });
+      gameOverIcon.innerText = '🏳️';
+      gameOverTitle.innerText = 'Kamu Menyerah! 🏳️';
+      gameOverSubtitle.innerText = winnerName + ' Memenangkan Pertandingan!';
+      gameOverModal.classList.remove('hidden');
+      updateLockState();
+    }
+  });
+
   btnNewGame.addEventListener('click', () => {
     const isOngoing = isGameActive();
     const promptText = isOngoing
-      ? 'Duel sedang berlangsung! Jika mulai ulang sekarang, kamu dianggap MENYERAH. Lanjutkan?'
-      : 'Mulai ulang duel catur dari awal?';
+      ? 'Pertandingan sedang aktif! Jika diulang, kamu dianggap MENYERAH. Lanjutkan?'
+      : 'Mulai duel catur baru?';
 
     if (confirm(promptText)) {
       chess.reset();
@@ -613,9 +631,9 @@
       legalMoves = [];
       gameOverModal.classList.add('hidden');
       renderBoard();
-      updateRoleLockState();
-      broadcast({ type: 'new_game', surrendered: isOngoing });
-      showToast(isOngoing ? 'Kamu menyerah dan mereset duel' : 'Papan catur direset');
+      updateLockState();
+      broadcast({ type: 'new_game' });
+      showToast('Papan catur direset untuk ronde baru!');
       playSound('notify');
     }
   });
@@ -627,13 +645,13 @@
     legalMoves = [];
     gameOverModal.classList.add('hidden');
     renderBoard();
-    updateRoleLockState();
-    broadcast({ type: 'new_game', surrendered: false });
+    updateLockState();
+    broadcast({ type: 'new_game' });
   });
 
   btnSettings.addEventListener('click', () => {
     inputRoom.value = roomName;
-    updateRoleLockState();
+    updateLockState();
     settingsModal.classList.remove('hidden');
   });
 
@@ -661,41 +679,6 @@
     modeOnline.classList.remove('active');
   });
 
-  pickWhite.addEventListener('click', () => {
-    if (isGameActive()) {
-      showToast('🔒 Sisi terkunci saat duel berlangsung!');
-      return;
-    }
-    mySide = 'w';
-    isFlipped = false;
-    pickWhite.classList.add('active');
-    pickBlack.classList.remove('active');
-    pickSpectator.classList.remove('active');
-  });
-
-  pickBlack.addEventListener('click', () => {
-    if (isGameActive()) {
-      showToast('🔒 Sisi terkunci saat duel berlangsung!');
-      return;
-    }
-    mySide = 'b';
-    isFlipped = true;
-    pickBlack.classList.add('active');
-    pickWhite.classList.remove('active');
-    pickSpectator.classList.remove('active');
-  });
-
-  pickSpectator.addEventListener('click', () => {
-    if (isGameActive()) {
-      showToast('🔒 Tidak bisa beralih penonton saat duel aktif!');
-      return;
-    }
-    mySide = 's';
-    pickSpectator.classList.add('active');
-    pickWhite.classList.remove('active');
-    pickBlack.classList.remove('active');
-  });
-
   btnSaveSettings.addEventListener('click', () => {
     const newRoom = inputRoom.value.trim() || 'dorizz-omdo-tulip';
     if (newRoom !== roomName) {
@@ -707,12 +690,21 @@
     }
     settingsModal.classList.add('hidden');
     renderBoard();
-    updateRoleLockState();
+    updateLockState();
   });
+
+  // Sync initial selector button visual state
+  if (mySide === 'b') {
+    chooseTulip.classList.add('active');
+    chooseOmDo.classList.remove('active');
+  } else {
+    chooseOmDo.classList.add('active');
+    chooseTulip.classList.remove('active');
+  }
 
   // Initialization
   renderBoard();
-  updateRoleLockState();
+  updateLockState();
   initMQTT();
 
 })();
