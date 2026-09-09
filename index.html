@@ -10,8 +10,8 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="chess.min.js"></script>
   <script src="mqtt.min.js"></script>
-  <script src="pieces.js?v=2.4"></script>
-  <link rel="stylesheet" href="style.css?v=2.4">
+  <script src="pieces.js?v=2.5"></script>
+  <link rel="stylesheet" href="style.css?v=2.5">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -21,7 +21,7 @@
     <!-- Top Header: Title, Voice Call & Room Info -->
     <header class="game-header">
       <div class="brand">
-        <span class="badge-tag">DUEL REALTIME v2.4</span>
+        <span class="badge-tag">DUEL REALTIME v2.5</span>
         <h1>Dorizz Chess ♟️</h1>
       </div>
       <div class="header-right">
@@ -74,7 +74,10 @@
 
     <!-- Chess Board Container -->
     <main class="board-wrapper">
-      <div id="board" class="chessboard"></div>
+      <div class="board-container">
+        <div id="board" class="chess-board"></div>
+      </div>
+      <div id="quickToast" class="quick-toast"></div>
     </main>
 
     <!-- Local Player Profile Box -->
@@ -192,9 +195,8 @@
     <audio id="remoteAudio" autoplay playsinline></audio>
 
     <!-- Quick Toast -->
-    <div class="toast" id="quickToast"></div>
   </div>
 
-  <script src="app.js?v=2.4"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 </html>

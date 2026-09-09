@@ -168,9 +168,54 @@
     ]
   };
 
-  // Anti-Cheat & Lock Verification
+  // Game Session Persistence & Anti-Cheat
+  const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const STORAGE_KEY = 'dorizz_chess_state_' + roomName;
+
   function isGameActive() {
-    return chess.history().length > 0 && !chess.game_over();
+    return (chess.fen() !== INITIAL_FEN || chess.history().length > 0) && !chess.game_over();
+  }
+
+  function saveLocalState() {
+    try {
+      if (chess.fen() === INITIAL_FEN && chess.history().length === 0) return;
+      const state = {
+        fen: chess.fen(),
+        pgn: chess.pgn(),
+        lastMove: lastMove,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch(e) {}
+  }
+
+  function clearLocalState() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch(e) {}
+  }
+
+  function restoreLocalState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data) return false;
+
+      let success = false;
+      if (data.pgn) {
+        success = chess.load_pgn(data.pgn);
+      }
+      if (!success && data.fen && data.fen !== INITIAL_FEN) {
+        success = chess.load(data.fen);
+      }
+
+      if (success) {
+        lastMove = data.lastMove || null;
+        return true;
+      }
+    } catch(e) {}
+    return false;
   }
 
   function updateLockState() {
@@ -221,6 +266,7 @@
         mqttClient.subscribe(mqttTopic, (err) => {
           if (!err) {
             broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide });
+            broadcast({ type: 'sync_request' });
           }
         });
       });
@@ -271,11 +317,13 @@
         const isCapture = !!res.captured;
         playSound(isCapture ? 'capture' : 'move');
         triggerHaptic(isCapture ? 'capture' : 'move');
+        saveLocalState();
         renderBoard();
         checkGameStatus();
         updateLockState();
       }
     } else if (data.type === 'resign') {
+      clearLocalState();
       const winnerName = (data.loserSide === 'w') ? 'Tante Tulip 🌷' : 'Om Do 👑';
       gameOverIcon.innerText = '🏆';
       gameOverTitle.innerText = data.loserName + ' Menyerah! 🏳️';
@@ -289,6 +337,7 @@
       playSound('notify');
       triggerHaptic('move');
     } else if (data.type === 'new_game') {
+      clearLocalState();
       chess.reset();
       lastMove = null;
       selectedSquare = null;
@@ -305,6 +354,33 @@
       }
       if (!data.isAck) {
         broadcast({ type: 'presence', senderId: myId, name: myName, side: mySide, isAck: true });
+      }
+    } else if (data.type === 'sync_request') {
+      if (chess.fen() !== INITIAL_FEN || chess.history().length > 0) {
+        broadcast({
+          type: 'sync_response',
+          fen: chess.fen(),
+          pgn: chess.pgn(),
+          lastMove: lastMove
+        });
+      }
+    } else if (data.type === 'sync_response') {
+      if (data.fen && data.fen !== chess.fen()) {
+        let synced = false;
+        if (data.pgn) {
+          synced = chess.load_pgn(data.pgn);
+        }
+        if (!synced && data.fen) {
+          synced = chess.load(data.fen);
+        }
+        if (synced) {
+          lastMove = data.lastMove || null;
+          saveLocalState();
+          renderBoard();
+          updatePlayerCards();
+          updateLockState();
+          showToast('Sesi duel tersinkronisasi! ⚡');
+        }
       }
     } else if (data.type === 'rtc_invite') {
       handleCallInvite(data);
@@ -448,7 +524,8 @@
           playSound(isCapture ? 'capture' : 'move');
           triggerHaptic(isCapture ? 'capture' : 'move');
 
-          broadcast({ type: 'move', move: moveData, side: mySide, fen: chess.fen() });
+          saveLocalState();
+          broadcast({ type: 'move', move: moveData, side: mySide, fen: chess.fen(), pgn: chess.pgn() });
 
           selectedSquare = null;
           legalMoves = [];
@@ -653,6 +730,7 @@
       return;
     }
     if (confirm('Apakah kamu yakin ingin MENYERAH pada duel ini?')) {
+      clearLocalState();
       const winnerName = (mySide === 'w') ? 'Tante Tulip 🌷' : 'Om Do 👑';
       broadcast({ type: 'resign', loserSide: mySide, loserName: myName });
       gameOverIcon.innerText = '🏳️';
@@ -670,6 +748,7 @@
       : 'Mulai duel catur baru?';
 
     if (confirm(promptText)) {
+      clearLocalState();
       chess.reset();
       lastMove = null;
       selectedSquare = null;
@@ -684,6 +763,7 @@
   });
 
   btnPlayAgain.addEventListener('click', () => {
+    clearLocalState();
     chess.reset();
     lastMove = null;
     selectedSquare = null;
@@ -1012,8 +1092,12 @@
   if (btnToggleMic) btnToggleMic.addEventListener('click', toggleMic);
 
   // Initialization
+  const restored = restoreLocalState();
   renderBoard();
   updateLockState();
   initMQTT();
+  if (restored) {
+    showToast('Sesi duel dipulihkan! 🔄');
+  }
 
 })();
