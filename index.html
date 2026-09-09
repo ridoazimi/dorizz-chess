@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Dorizz Chess Duel ♟️</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="chess.min.js"></script>
+  <script src="mqtt.min.js"></script>
+  <script src="pieces.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Header: Title & Room Info -->
+    <header class="game-header">
+      <div class="brand">
+        <span class="badge-tag">DUEL REALTIME</span>
+        <h1>Dorizz Chess ♟️</h1>
+      </div>
+      <div class="room-pill" id="roomPill">
+        <span class="dot" id="connDot"></span>
+        <span id="roomLabel">Room: Default</span>
+      </div>
+    </header>
+
+    <!-- Opponent Profile Box -->
+    <section class="player-card" id="topPlayerCard">
+      <div class="player-info">
+        <div class="avatar" id="topAvatar">♟️</div>
+        <div class="meta">
+          <div class="name-row">
+            <span class="name" id="topName">Lawan</span>
+            <span class="side-badge" id="topSideBadge">Hitam</span>
+          </div>
+          <div class="captured-row" id="topCaptured"></div>
+        </div>
+      </div>
+      <div class="turn-indicator" id="topTurnIndicator">Menunggu...</div>
+    </section>
+
+    <!-- Chess Board Container -->
+    <main class="board-wrapper">
+      <div class="board-container">
+        <div id="board" class="chess-board"></div>
+      </div>
+      <div id="quickToast" class="quick-toast"></div>
+    </main>
+
+    <!-- Self Profile Box -->
+    <section class="player-card active-card" id="bottomPlayerCard">
+      <div class="player-info">
+        <div class="avatar" id="bottomAvatar">👑</div>
+        <div class="meta">
+          <div class="name-row">
+            <span class="name" id="bottomName">Kamu</span>
+            <span class="side-badge" id="bottomSideBadge">Putih</span>
+          </div>
+          <div class="captured-row" id="bottomCaptured"></div>
+        </div>
+      </div>
+      <div class="turn-indicator" id="bottomTurnIndicator">Giliran Kamu</div>
+    </section>
+
+    <!-- Control Actions & Reactions -->
+    <footer class="action-bar">
+      <button class="btn btn-icon" id="btnFlip" title="Putar Papan">
+        <span class="icon">🔄</span>
+        <span class="label">Putar</span>
+      </button>
+      <button class="btn btn-icon" id="btnRole" title="Ganti Sisi">
+        <span class="icon">🎭</span>
+        <span class="label" id="roleLabel">Sisi</span>
+      </button>
+      <button class="btn btn-icon" id="btnEmoteToggle" title="Chat Singkat">
+        <span class="icon">💬</span>
+        <span class="label">Taunt</span>
+      </button>
+      <button class="btn btn-icon" id="btnNewGame" title="Main Ulang">
+        <span class="icon">✨</span>
+        <span class="label">Ulang</span>
+      </button>
+      <button class="btn btn-icon" id="btnSettings" title="Pengaturan">
+        <span class="icon">⚙️</span>
+        <span class="label">Room</span>
+      </button>
+    </footer>
+
+    <!-- Emote Taunt Popup Drawer -->
+    <div id="emoteDrawer" class="drawer hidden">
+      <div class="drawer-header">
+        <h3>Kirim Pesan Cepat 🔥</h3>
+        <button id="btnCloseDrawer" class="btn-close">&times;</button>
+      </div>
+      <div class="emote-grid">
+        <button class="emote-btn" data-msg="Skak lu! 😈">Skak lu! 😈</button>
+        <button class="emote-btn" data-msg="Pikir dulu bentar ya... 🤔">Pikir dulu... 🤔</button>
+        <button class="emote-btn" data-msg="Awas jebakan Batman! 🦇">Awas jebakan! 🦇</button>
+        <button class="emote-btn" data-msg="Waduh blunder haha 🙈">Blunder nih 🙈</button>
+        <button class="emote-btn" data-msg="Tulip pasti menang! 🌷">Tulip pasti menang! 🌷</button>
+        <button class="emote-btn" data-msg="Om Do jago banget gasih! 😎">Om Do jago! 😎</button>
+        <button class="emote-btn" data-msg="GGWP! Main lagi? 🤝">GGWP! 🤝</button>
+        <button class="emote-btn" data-msg="Kena taktik Dorizz! ⚡">Taktik Dorizz! ⚡</button>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Pengaturan Duel</h3>
+          <button id="btnCloseSettings" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <label>Nama Room:</label>
+          <input type="text" id="inputRoom" placeholder="dorizz-omdo-tulip">
+          <p class="hint">Pastikan Om Do dan Tante Tulip pakai nama room yang sama persis.</p>
+          
+          <label style="margin-top:12px;">Mode:</label>
+          <div class="mode-toggle">
+            <button class="btn-toggle active" id="modeOnline">Realtime Online</button>
+            <button class="btn-toggle" id="modePassPlay">Pass & Play (1 HP)</button>
+          </div>
+
+          <label style="margin-top:12px;">Pilih Sisi Kamu:</label>
+          <div class="side-selector">
+            <button class="btn-side active" id="pickWhite">⚪ Putih (Jalan Duluan)</button>
+            <button class="btn-side" id="pickBlack">⚫ Hitam (Kedua)</button>
+            <button class="btn-side" id="pickSpectator">👁️ Penonton</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="btnSaveSettings">Simpan & Mulai</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Banner Overlay -->
+    <div id="gameOverModal" class="modal hidden">
+      <div class="modal-content text-center">
+        <div class="trophy-icon">🏆</div>
+        <h2 id="gameOverTitle">SKAKMAT!</h2>
+        <p id="gameOverSubtitle">Om Do Memenangkan Pertandingan!</p>
+        <div class="modal-footer justify-center" style="margin-top:16px;">
+          <button class="btn btn-primary" id="btnPlayAgain">Main Lagi Yuk! 🔄</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
